@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>闲鱼低价捕捉机</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%2314100d'/%3E%3Cpath d='M11 19v-8h8l9 9-8 8-9-9z' fill='none' stroke='%23ff6b1a' stroke-width='2.4'/%3E%3Ccircle cx='15.5' cy='15.5' r='1.9' fill='%23ff6b1a'/%3E%3Cpath d='M22 26v6m-3-3 3 3 3-3' fill='none' stroke='%23ffb37a' stroke-width='2.4'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="ambient" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M11 19v-8h8l9 9-8 8-9-9z" fill="none" stroke="currentColor" stroke-width="2.6"/>
+      <circle cx="15.5" cy="15.5" r="2" fill="currentColor"/>
+      <path d="M22 26v6m-3-3 3 3 3-3" fill="none" stroke-width="2.6"/>
+    </svg>
+    <div class="brand-text">
+      <h1>闲鱼低价捕捉机</h1>
+      <p id="brand-sub">实时监控 · 捡漏评分 · 到价推送</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <span class="engine-pill" id="engine-pill"><i></i><span>运行中</span></span>
+    <button class="btn ghost" id="btn-toggle-engine" type="button">暂停</button>
+    <button class="btn ghost" id="btn-settings" type="button">设置</button>
+  </div>
+</header>
+
+<main>
+  <section class="metrics" id="metrics" aria-label="运行指标"></section>
+
+  <div class="board">
+    <aside class="rail">
+      <div class="panel-head">
+        <h2>监控任务</h2>
+        <button class="btn primary small" id="btn-new-task" type="button">新建任务</button>
+      </div>
+      <div class="task-list" id="task-list"></div>
+      <p class="rail-note" id="rail-note"></p>
+    </aside>
+
+    <section class="feed" aria-label="命中的商品">
+      <div class="feed-head">
+        <div class="feed-title">
+          <h2>实时捕获</h2>
+          <span class="count" id="feed-count">0</span>
+        </div>
+        <div class="feed-tools">
+          <div class="chips" id="grade-filter"></div>
+          <button class="btn ghost small" id="btn-export" type="button">导出 CSV</button>
+        </div>
+      </div>
+      <div class="hit-list" id="feed"></div>
+    </section>
+
+    <aside class="insight">
+      <section class="panel">
+        <div class="panel-head"><h3>折扣分布</h3><span class="micro" id="best-discount"></span></div>
+        <div class="chart-wrap"><canvas id="chart-discount" height="132"></canvas></div>
+        <p class="hint">按已命中商品的折扣区间统计，横轴为折扣比例。</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>数据源</h3><span class="micro" id="source-badge"></span></div>
+        <p class="hint">闲鱼没有公开的搜索接口，真实数据来自你已授权的接口，或手动粘贴。</p>
+        <div class="source-line" id="source-line"></div>
+        <button class="btn ghost small wide" id="btn-test-source" type="button">测试当前任务连通性</button>
+        <p class="hint" id="source-test-note"></p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>粘贴导入</h3><span class="micro">零抓取</span></div>
+        <textarea id="paste-box" rows="4" spellcheck="false"
+          placeholder="每行一条：&#10;iPhone 13 128G 95新 自用 1899 https://…&#10;RTX 3060 显卡 1450&#10;也可以直接粘贴闲鱼分享文案、CSV 表格或 JSON"></textarea>
+        <button class="btn primary small wide" id="btn-import" type="button">解析并进入监控</button>
+        <button class="btn ghost small wide" id="btn-import-file" type="button">导入文件（JSON / CSV / TXT）</button>
+        <input type="file" id="import-file" accept=".json,.csv,.txt,.md,.tsv" hidden>
+        <p class="hint" id="import-note">从手机复制商品标题和价格粘贴进来，同样走评分与去重。</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>推送日志</h3><span class="micro" id="alert-count"></span></div>
+        <div class="alert-list" id="alert-list"></div>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<div class="overlay" id="overlay" hidden></div>
+
+<aside class="drawer" id="drawer" hidden aria-label="编辑面板">
+  <div class="drawer-head">
+    <h2 id="drawer-title">新建任务</h2>
+    <button class="icon-btn" id="drawer-close" type="button" aria-label="关闭">×</button>
+  </div>
+
+  <!-- ===== 视图：任务表单 ===== -->
+  <form class="form" id="task-form" autocomplete="off">
+    <label class="field">
+      <span>任务名</span>
+      <input id="t-name" type="text" placeholder="例如：iPhone 13 捡漏" required>
+    </label>
+    <label class="field">
+      <span>监控关键词<em>逗号分隔，命中任意一个即可</em></span>
+      <input id="t-keywords" type="text" placeholder="iphone 13, iphone 14">
+    </label>
+    <label class="field">
+      <span>排除词<em>标题包含即丢弃</em></span>
+      <input id="t-exclude" type="text" placeholder="配件, 壳, 膜, 维修">
+    </label>
+    <div class="field-row">
+      <label class="field">
+        <span>最低价</span>
+        <input id="t-min" type="number" min="0" step="1" placeholder="0">
+      </label>
+      <label class="field">
+        <span>最高价</span>
+        <input id="t-max" type="number" min="0" step="1" placeholder="3200">
+      </label>
+    </div>
+    <div class="field-row">
+      <label class="field">
+        <span>最低折扣<em>低于参考价多少才报</em></span>
+        <input id="t-discount" type="number" min="0" max="98" step="1" placeholder="25">
+      </label>
+      <label class="field">
+        <span>轮询间隔（秒）</span>
+        <input id="t-interval" type="number" min="5" max="3600" step="1" placeholder="30">
+      </label>
+    </div>
+    <div class="field-row">
+      <label class="field">
+        <span>参考价<em>留空则用已见商品中位数</em></span>
+        <input id="t-ref" type="number" min="0" step="1" placeholder="可选">
+      </label>
+      <label class="field">
+        <span>地区<em>留空不限</em></span>
+        <input id="t-region" type="text" placeholder="惠州">
+      </label>
+    </div>
+    <label class="field">
+      <span>数据源</span>
+      <select id="t-source"></select>
+    </label>
+    <label class="field" id="t-conf-wrap" hidden>
+      <span>接口配置 JSON<em>仅 HTTP 数据源需要</em></span>
+      <textarea id="t-conf" rows="6" spellcheck="false"
+        placeholder='{"url": "https://api.example.com/search", "items_path": "data.items", "map": {"item_id": "id", "title": "title", "price": "price"}}'></textarea>
+    </label>
+    <label class="switch">
+      <input id="t-enabled" type="checkbox" checked>
+      <span>保存后立即启用</span>
+    </label>
+    <div class="form-actions">
+      <button class="btn primary" type="submit">保存任务</button>
+      <button class="btn ghost" type="button" id="t-test">测试数据源</button>
+      <button class="btn danger" type="button" id="t-delete" hidden>删除</button>
+    </div>
+    <p class="hint" id="task-note"></p>
+  </form>
+
+  <!-- ===== 视图：全局设置 ===== -->
+  <div class="form" id="settings-form" hidden>
+    <div class="group">
+      <h3>提醒方式</h3>
+      <label class="switch"><input id="s-desktop" type="checkbox"><span>桌面通知（需 pip install winotify）</span></label>
+      <label class="switch"><input id="s-sound" type="checkbox"><span>命中时播放提示音</span></label>
+      <label class="field">
+        <span>最低推送分数<em>0-100，越高越安静</em></span>
+        <input id="s-score" type="number" min="0" max="100" step="1">
+      </label>
+    </div>
+    <div class="group">
+      <h3>Webhook 推送</h3>
+      <label class="switch"><input id="s-hook-enable" type="checkbox"><span>启用 Webhook</span></label>
+      <div class="field-row">
+        <label class="field">
+          <span>类型</span>
+          <select id="s-hook-type">
+            <option value="feishu">飞书群机器人</option>
+            <option value="dingtalk">钉钉机器人</option>
+            <option value="wecom">企业微信群机器人</option>
+            <option value="custom">自定义 JSON</option>
+          </select>
+        </label>
+      </div>
+      <label class="field">
+        <span>Webhook 地址</span>
+        <input id="s-hook-url" type="text" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…">
+      </label>
+      <button class="btn ghost small" type="button" id="s-hook-test">发一条测试消息</button>
+    </div>
+    <div class="group">
+      <h3>手机推送（Bark）</h3>
+      <label class="switch"><input id="s-bark-enable" type="checkbox"><span>启用 Bark</span></label>
+      <label class="field">
+        <span>Bark 推送地址</span>
+        <input id="s-bark-url" type="text" placeholder="https://api.day.app/你的Key">
+      </label>
+    </div>
+    <div class="group">
+      <h3>抓取节奏</h3>
+      <div class="field-row">
+        <label class="field">
+          <span>并发上限</span>
+          <input id="s-concurrency" type="number" min="1" max="8" step="1">
+        </label>
+        <label class="field">
+          <span>单次取回上限</span>
+          <input id="s-limit" type="number" min="5" max="100" step="5">
+        </label>
+      </div>
+      <p class="hint">间隔过短容易触发上游限流，建议不低于 15 秒。</p>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" type="button" id="s-save">保存设置</button>
+    </div>
+    <p class="hint" id="settings-note"></p>
+  </div>
+</aside>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="/app.js" defer></script>
+</body>
+</html>
